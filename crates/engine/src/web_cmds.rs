@@ -1089,6 +1089,8 @@ fn quick_export(s: &mut Session, p: &Value) -> Result<Value> {
     // The name typed in the save dialog wins over Export Preferences' format: Quick Export as PNG
     // renamed to `photo.jpeg` must write a JPEG, not PNG bytes upload checks refuse (#8519).
     let fmt = match crate::file_cmds::extension(&path).as_deref() {
+        // EXR preserves the preference-selected float encoding even with an explicit suffix.
+        _ if fmt == "exr" => fmt,
         None => fmt,
         Some("jpg" | "jpeg") => "jpg".into(),
         Some(e @ ("png" | "gif" | "webp")) => e.into(),
