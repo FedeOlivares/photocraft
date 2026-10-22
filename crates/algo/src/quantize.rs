@@ -529,11 +529,23 @@ enum StripKind<'a> {
     Threshold,
     Pattern,
     /// Floyd–Steinberg: the error each pixel of the last converted row passes down.
-    Diffusion { errs: Vec<f32> },
+    Diffusion {
+        errs: Vec<f32>,
+    },
     /// The spot function's values over a cell, sorted (its CDF ranks coverage by tone).
-    Halftone { cell: f32, sin: f32, cos: f32, shape: HalftoneShape, table: Vec<f32> },
+    Halftone {
+        cell: f32,
+        sin: f32,
+        cos: f32,
+        shape: HalftoneShape,
+        table: Vec<f32>,
+    },
     /// Custom Pattern's threshold map, `mw` x `mh`, tiled from the top-left corner.
-    Custom { map: &'a [f32], mw: usize, mh: usize },
+    Custom {
+        map: &'a [f32],
+        mw: usize,
+        mh: usize,
+    },
 }
 
 impl<'a> BitmapStrips<'a> {
@@ -545,7 +557,8 @@ impl<'a> BitmapStrips<'a> {
             BitmapMethod::Halftone { cell, angle, shape } => {
                 let (sin, cos) = angle.to_radians().sin_cos();
                 // Rank the spot function over the cell so coverage is proportional to the tone.
-                let mut table: Vec<f32> = (0..32 * 32).map(|k| spot(shape, ((k % 32) as f32 + 0.5) / 16.0 - 1.0, ((k / 32) as f32 + 0.5) / 16.0 - 1.0)).collect();
+                let mut table: Vec<f32> =
+                    (0..32 * 32).map(|k| spot(shape, ((k % 32) as f32 + 0.5) / 16.0 - 1.0, ((k / 32) as f32 + 0.5) / 16.0 - 1.0)).collect();
                 table.sort_by(f32::total_cmp);
                 StripKind::Halftone { cell: cell.max(2.0), sin, cos, shape, table }
             }
