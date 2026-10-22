@@ -1112,6 +1112,15 @@ fn quick_export(s: &mut Session, p: &Value) -> Result<Value> {
     o.insert("transparency".into(), json!(true));
     o.insert("matte".into(), json!("#ffffff"));
     match fmt.as_str() {
+        "exr" => {
+            // EXR needs the original depth and signed/HDR samples. The regular exporter
+            // converts through the document profile to linear light; the web path clips to 8-bit.
+            // Choose the codec from the preference, independently of an explicit path's suffix.
+            let (bytes, warnings) = crate::file_cmds::encode(&doc, "exr", None)?;
+            write_file(&path, &bytes)?;
+            crate::automate_cmds::fire_event(s, "export");
+            return Ok(json!({"path": path, "format": fmt, "warnings": warnings}));
+        }
         "jpg" => {
             o.insert("format".into(), json!("jpeg"));
             o.insert("quality".into(), json!(prefs.jpeg_quality.min(100)));
@@ -1545,7 +1554,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Export Preferences…",
             &["File", "Export"],
             None,
-            r##"{"quickExportFormat":"png|jpg|gif|webp"?,"quickExportLocation":"ask|sameFolder"?,"jpegQuality":1..100?,"webpLossless":bool?,"webpQuality":1..100?,"metadata":"none|copyright|all"?,"convertToSrgb":bool?} → {values}"##,
+            r##"{"quickExportFormat":"png|jpg|gif|webp|exr"?,"quickExportLocation":"ask|sameFolder"?,"jpegQuality":1..100?,"webpLossless":bool?,"webpQuality":1..100?,"metadata":"none|copyright|all"?,"convertToSrgb":bool?} → {values}"##,
             |_| Ok(()),
             export_preferences
         ),
