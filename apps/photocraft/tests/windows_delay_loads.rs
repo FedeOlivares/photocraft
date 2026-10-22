@@ -2,7 +2,11 @@
 //! Windows images (NTLite, some N/LTSC builds) lack them, and a load-time import stops the app
 //! from starting at all (#5884 Windows.Data.Pdf.dll, #8272 prntvpt.dll). `build.rs` delay-loads
 //! them; this reads the built exe's PE import tables to prove it.
-#![cfg(all(target_os = "windows", target_env = "msvc"))]
+#![cfg(all(
+    target_os = "windows",
+    target_env = "msvc",
+    target_pointer_width = "64",
+))]
 
 /// Loaded on first use by the print commands, which check them first.
 const PRINT_ONLY: [&str; 2] = ["windows.data.pdf.dll", "prntvpt.dll"];
