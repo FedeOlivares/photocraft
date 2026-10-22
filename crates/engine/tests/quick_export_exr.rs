@@ -55,10 +55,28 @@ fn quick_export_exr_preserves_float_samples_and_document() {
             let tolerance = if depth == 32 { 1e-7 } else { 2e-5 };
             assert!((actual - expected).abs() < tolerance, "depth {depth}: {actual} != {expected}");
         }
-        // An explicit name chooses the destination, not the encoding.
+        // The save-dialog extension chooses the encoding, including EXR (#8519).
+        let explicit = dir.path().join("explicit.exr");
+        let result = s.execute("file.export.quickExport", json!({"path": explicit})).unwrap();
+        assert_eq!(result["format"], "exr");
+        let bytes = std::fs::read(explicit).unwrap();
+        assert_eq!(photocraft_codecs::detect(&bytes), Some(photocraft_codecs::Format::OpenExr));
+        if depth == 32 {
+            assert_eq!(photocraft_codecs::decode(&bytes).unwrap().sample_type(), photocraft_codecs::SampleType::F32);
+        }
         let explicit = dir.path().join("explicit.png");
-        s.execute("file.export.quickExport", json!({"path": explicit})).unwrap();
-        assert_eq!(photocraft_codecs::detect(&std::fs::read(explicit).unwrap()), Some(photocraft_codecs::Format::OpenExr));
+        let result = s.execute("file.export.quickExport", json!({"path": explicit})).unwrap();
+        assert_eq!(result["format"], "png");
+        assert_eq!(photocraft_codecs::detect(&std::fs::read(explicit).unwrap()), Some(photocraft_codecs::Format::Png));
+        s.execute("prefs.set", json!({"path": "export.quickExportFormat", "value": "png"})).unwrap();
+        let explicit = dir.path().join("png-preference.exr");
+        let result = s.execute("file.export.quickExport", json!({"path": explicit})).unwrap();
+        assert_eq!(result["format"], "exr");
+        let bytes = std::fs::read(explicit).unwrap();
+        assert_eq!(photocraft_codecs::detect(&bytes), Some(photocraft_codecs::Format::OpenExr));
+        if depth == 32 {
+            assert_eq!(photocraft_codecs::decode(&bytes).unwrap().sample_type(), photocraft_codecs::SampleType::F32);
+        }
         let source = s.active().unwrap();
         assert_eq!(photocraft_format::save_to_bytes(&source.doc, &Default::default()).unwrap(), before);
         assert_eq!(source.revision, revision);
