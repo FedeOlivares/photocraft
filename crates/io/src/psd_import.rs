@@ -57,6 +57,11 @@ pub(crate) struct Ctx<'a> {
     pub txt2: Option<photocraft_text::engine_data::Value>,
     /// Smart-filter caches from the global `FEid`/`FXid` blocks (filter masks, by placed id).
     pub filter_effects: Vec<photocraft_psd::filter_effects::FilterEffectsItem>,
+    /// Filter masks already decoded, by placed id: every layer of a source reads the same item, and
+    /// a surface clones by sharing its tiles.
+    pub filter_masks: std::collections::HashMap<String, Option<LayerMask>>,
+    /// The same for the unfiltered pixels the mask mixes back in.
+    pub unfiltered: std::collections::HashMap<String, Option<Surface>>,
     /// Placed layers naming the same source share editable contents, not their placement.
     pub smart_contents: std::collections::HashMap<String, SmartContentsId>,
     /// Source sizes of `PlLd`-only placed layers, by source id (read once per embedded file).
@@ -264,14 +269,19 @@ impl Ctx<'_> {
     /// document coordinates, white beyond its bounds (`filterMaskExtendWithWhite`). An all-white
     /// mask is no mask.
     fn filter_mask(&mut self, placed: &str, stack: &crate::smart_map::FilterStack, name: &str) -> Option<LayerMask> {
+        if let Some(done) = self.filter_masks.get(placed) {
+            return done.clone();
+        }
         let item = self.filter_effects.iter().find(|i| i.id == placed)?;
-        match crate::smart_map::mask_from_item(item, self.mask_fmt.sample, stack) {
+        let mask = match crate::smart_map::mask_from_item(item, self.mask_fmt.sample, stack) {
             Ok(m) => m,
             Err(e) => {
                 self.warn(format!("layer \"{name}\": {e}; the filter mask was ignored"));
                 None
             }
-        }
+        };
+        self.filter_masks.insert(placed.to_string(), mask.clone());
+        mask
     }
 
     fn apply_common(&mut self, l: &mut Layer, rec: &LayerRecord, blend_override: Option<photocraft_psd::BlendMode>) {
@@ -439,7 +449,14 @@ impl Ctx<'_> {
             let shown = stack.enabled && stack.filters.iter().any(|f| f.visible);
             let cache = match (&placed, filter_mask.as_ref().filter(|m| m.enabled && shown)) {
                 (Some(p), Some(m)) => {
-                    let unfiltered = self.filter_effects.iter().find(|i| i.id == p.placed).and_then(|i| crate::smart_map::unfiltered_from_item(i, self.fmt));
+                    let unfiltered = match self.unfiltered.get(&p.placed) {
+                        Some(done) => done.clone(),
+                        None => {
+                            let made = self.filter_effects.iter().find(|i| i.id == p.placed).and_then(|i| crate::smart_map::unfiltered_from_item(i, self.fmt));
+                            self.unfiltered.insert(p.placed.clone(), made.clone());
+                            made
+                        }
+                    };
                     match unfiltered {
                         Some(u) => photocraft_compose::filter_mask::mix(&u, &stored, m),
                         None => stored,
@@ -940,6 +957,8 @@ pub(crate) fn psd_to_document_decoded(
         dpi: doc.resolution_dpi,
         txt2: file.global_blocks.iter().find(|b| &b.key == b"Txt2").and_then(|b| photocraft_text::psd::parse_txt2(&b.data)),
         filter_effects: Vec::new(),
+        filter_masks: Default::default(),
+        unfiltered: Default::default(),
         smart_contents: Default::default(),
         plld_sizes: Default::default(),
         ctl: *ctl,
