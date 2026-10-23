@@ -71,7 +71,7 @@ fn jpeg_dimensions(data: &[u8]) -> Option<(u32, u32)> {
                 return Some((u32::from(w), u32::from(h)));
             }
             // Start of scan or end of image before any frame header.
-            0xD8 | 0xD9 | 0xDA => return None,
+            0xD8..=0xDA => return None,
             0x01 | 0xD0..=0xD7 => i += 2,
             _ => i += 2 + usize::from(u16::from_be_bytes([*data.get(i + 2)?, *data.get(i + 3)?])),
         }

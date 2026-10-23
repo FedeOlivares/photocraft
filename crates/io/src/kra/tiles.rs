@@ -289,7 +289,7 @@ mod tests {
         let dense: Vec<_> = (0..4).flat_map(|y| (0..4).map(move |x| (x * 64, y * 64))).collect();
         assert_eq!(file(&dense).decoded_bytes(4).unwrap(), 16 * 64 * 64 * 4);
         // The same number far apart each take a whole backing tile: 16 × 256 × 256 × 4.
-        let sparse: Vec<_> = (0..16).map(|i| (i * 10_000, 0)).collect();
+        let sparse: Vec<_> = (0..16).map(|i| (i * 10_240, 0)).collect();
         assert_eq!(file(&sparse).decoded_bytes(4).unwrap(), 16 * 256 * 256 * 4);
     }
 }
