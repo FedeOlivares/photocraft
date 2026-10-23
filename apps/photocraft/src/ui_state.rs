@@ -131,8 +131,8 @@ fn field<'a>(v: &'a ron::Value, name: &str) -> Option<&'a ron::Value> {
 
 #[cfg(test)]
 mod tests {
-    use super::{check, saved_position};
     use super::WindowMemory;
+    use super::{check, saved_position};
 
     fn file(window: &str, zoom: &str) -> String {
         let egui = format!("(options:(zoom_factor:{zoom},max_passes:2),data:([(18446744073709551615,(ron:\"(x:1.0)\"))]))");
