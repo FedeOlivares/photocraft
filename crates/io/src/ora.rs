@@ -525,8 +525,9 @@ fn png(w: u32, h: u32, px: &[[f32; 4]], sample: CSample) -> Result<Vec<u8>> {
 /// transparent pixels zeroed, so masked-out or empty margins aren't written.
 /// Most bytes of straight RGBA floats one layer may take while it is written. A layer is one PNG
 /// of its content's bounding box, so a few pixels far apart make a box of mostly nothing; refuse
-/// that rather than allocate it.
-const MAX_EXPORT_LAYER_BYTES: u64 = if cfg!(target_pointer_width = "64") { 4 << 30 } else { 1 << 30 };
+/// that rather than allocate it. 1.5 × [`MAX_ENTRY`] of floats is at most 8 B/px × a third of that
+/// raw, so the PNG stays within what [`Reader::png`] will read back.
+const MAX_EXPORT_LAYER_BYTES: u64 = 3 * MAX_ENTRY as u64 / 2;
 
 fn admit_layer(rect: Rect) -> Result<()> {
     let bytes = u64::from(rect.width()).saturating_mul(u64::from(rect.height())).saturating_mul(std::mem::size_of::<[f32; 4]>() as u64);

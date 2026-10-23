@@ -446,7 +446,7 @@ impl Builder {
         // The pixel cache is optional (the shape renders from its path without it), so charge the
         // area it would cover to the import's pixel budget and go without it when that is spent:
         // geometry across a 300000 px canvas would otherwise be rasterized for every shape.
-        let reach = sh.stroke.as_ref().map_or(0, |s| s.width.ceil() as i32 + 1);
+        let reach = sh.stroke.as_ref().map_or(0, |s| (s.width.ceil() as i32).saturating_add(1));
         let area = frame.inflate(reach).intersect(&self.canvas);
         let cost = u64::from(area.width()).saturating_mul(u64::from(area.height())).saturating_mul(self.format.bytes_per_pixel() as u64);
         if charge(&mut self.pixel_budget, cost) {

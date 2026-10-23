@@ -62,6 +62,8 @@ pub(crate) struct Ctx<'a> {
     pub filter_masks: std::collections::HashMap<String, Option<LayerMask>>,
     /// The same for the unfiltered pixels the mask mixes back in.
     pub unfiltered: std::collections::HashMap<String, Option<Surface>>,
+    /// Pixel bytes retained in [`Self::unfiltered`], held under [`MAX_UNFILTERED_BYTES`].
+    pub unfiltered_bytes: u64,
     /// Placed layers naming the same source share editable contents, not their placement.
     pub smart_contents: std::collections::HashMap<String, SmartContentsId>,
     /// Source sizes of `PlLd`-only placed layers, by source id (read once per embedded file).
@@ -452,7 +454,17 @@ impl Ctx<'_> {
                     let unfiltered = match self.unfiltered.get(&p.placed) {
                         Some(done) => done.clone(),
                         None => {
-                            let made = self.filter_effects.iter().find(|i| i.id == p.placed).and_then(|i| crate::smart_map::unfiltered_from_item(i, self.fmt));
+                            // Every distinct source is kept until the import ends, so what they add up to is
+                            // bounded: past the limit the layer keeps its stored pixels, unmixed.
+                            let item = self.filter_effects.iter().find(|i| i.id == p.placed);
+                            let cost = item
+                                .and_then(|i| i.rect.size().ok())
+                                .map_or(0, |(w, h)| (w as u64).saturating_mul(h as u64).saturating_mul(self.fmt.bytes_per_pixel() as u64));
+                            let fits = self.unfiltered_bytes.saturating_add(cost) <= MAX_UNFILTERED_BYTES;
+                            let made = item.filter(|_| fits).and_then(|i| crate::smart_map::unfiltered_from_item(i, self.fmt));
+                            if made.is_some() {
+                                self.unfiltered_bytes += cost;
+                            }
                             self.unfiltered.insert(p.placed.clone(), made.clone());
                             made
                         }
@@ -657,6 +669,9 @@ pub(crate) fn group_depth(file: &PsdFile) -> usize {
 /// Additional-layer-information keys (Adobe PSD spec, plus `cust`, `vowv` and `SoLE` seen in
 /// Photoshop's files) that are not an adjustment of their own: names, ids, locks, effects,
 /// masks, metadata, and the fill, type, placed and shape content read before.
+/// Most pixel bytes the smart-filter `FEid` sources may keep decoded across one import.
+const MAX_UNFILTERED_BYTES: u64 = 1 << 30;
+
 const LAYER_INFO_KEYS: [&[u8; 4]; 50] = [
     b"luni", b"lyid", b"lnsr", b"lsct", b"lsdk", b"lspf", b"lclr", b"iOpa", b"clbl", b"infx", b"knko", b"tsly", b"lmgm", b"vmgm", b"brst", b"shmd", b"fxrp",
     b"lfx2", b"lfxs", b"lmfx", b"lrFX", b"lyvr", b"sn2P", b"cust", b"CgEd", b"vmsk", b"vsms", b"vogk", b"vowv", b"vstk", b"vscg", b"artb", b"artd", b"abdd",
@@ -959,6 +974,7 @@ pub(crate) fn psd_to_document_decoded(
         filter_effects: Vec::new(),
         filter_masks: Default::default(),
         unfiltered: Default::default(),
+        unfiltered_bytes: 0,
         smart_contents: Default::default(),
         plld_sizes: Default::default(),
         ctl: *ctl,

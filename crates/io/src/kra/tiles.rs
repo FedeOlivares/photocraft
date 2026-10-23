@@ -219,16 +219,20 @@ impl<'a> TileFile<'a> {
     /// Bytes the decoded tiles take at `bpp` bytes per pixel: the larger of their own pixels and
     /// the whole 256×256 backing tiles they land in (a surface stores no less than a tile, so
     /// sparse tiles at distinct positions retain far more than they hold).
-    pub(crate) fn decoded_bytes(&self, bpp: usize) -> Result<usize> {
+    pub(crate) fn decoded_bytes(&self, bpp: usize, dx: i32, dy: i32) -> Result<usize> {
         let overflow = || invalid("tile size overflow");
         let logical = self.tiles.len().checked_mul(self.width * self.height).and_then(|n| n.checked_mul(bpp)).ok_or_else(overflow)?;
         let side = photocraft_geom::TILE_SIZE;
         let (w, h) = (i32::try_from(self.width.max(1)).map_err(|_| overflow())?, i32::try_from(self.height.max(1)).map_err(|_| overflow())?);
         let mut backing = std::collections::HashSet::new();
         for &(x, y, _) in &self.tiles {
-            // The corners of a tile reach every backing tile it overlaps up to one tile in size.
-            for (cx, cy) in [(x, y), (x.saturating_add(w - 1), y), (x, y.saturating_add(h - 1)), (x.saturating_add(w - 1), y.saturating_add(h - 1))] {
-                backing.insert((cx.div_euclid(side), cy.div_euclid(side)));
+            // The tile lands at its offset position and covers every backing tile its box overlaps.
+            let (x, y) = (x.checked_add(dx).ok_or_else(overflow)?, y.checked_add(dy).ok_or_else(overflow)?);
+            let (x1, y1) = (x.checked_add(w - 1).ok_or_else(overflow)?, y.checked_add(h - 1).ok_or_else(overflow)?);
+            for c in x.div_euclid(side)..=x1.div_euclid(side) {
+                for r in y.div_euclid(side)..=y1.div_euclid(side) {
+                    backing.insert((c, r));
+                }
             }
         }
         let tile_bytes = (side as usize).checked_mul(side as usize).and_then(|n| n.checked_mul(bpp)).ok_or_else(overflow)?;
@@ -287,9 +291,18 @@ mod tests {
     fn sparse_tiles_are_charged_for_the_backing_tiles_they_land_in() {
         // Sixteen 64×64 tiles that fill one 256×256 backing tile cost what they hold.
         let dense: Vec<_> = (0..4).flat_map(|y| (0..4).map(move |x| (x * 64, y * 64))).collect();
-        assert_eq!(file(&dense).decoded_bytes(4).unwrap(), 16 * 64 * 64 * 4);
+        assert_eq!(file(&dense).decoded_bytes(4, 0, 0).unwrap(), 16 * 64 * 64 * 4);
         // The same number far apart each take a whole backing tile: 16 × 256 × 256 × 4.
         let sparse: Vec<_> = (0..16).map(|i| (i * 10_240, 0)).collect();
-        assert_eq!(file(&sparse).decoded_bytes(4).unwrap(), 16 * 256 * 256 * 4);
+        assert_eq!(file(&sparse).decoded_bytes(4, 0, 0).unwrap(), 16 * 256 * 256 * 4);
+    }
+
+    #[test]
+    fn the_placement_offset_and_tile_extent_decide_the_backing_tiles() {
+        // One 64×64 tile straddling a backing-tile corner once offset touches four.
+        assert_eq!(file(&[(0, 0)]).decoded_bytes(4, 224, 224).unwrap(), 4 * 256 * 256 * 4);
+        // A tile wider than a backing tile reaches the ones between its corners.
+        let wide = TileFile { width: 1024, height: 1, pixel_size: 4, tiles: vec![(0, 0, &[][..])] };
+        assert_eq!(wide.decoded_bytes(4, 0, 0).unwrap(), 4 * 256 * 256 * 4);
     }
 }

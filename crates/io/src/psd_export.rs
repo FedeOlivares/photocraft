@@ -21,8 +21,10 @@ use crate::psd_import::REGENERATED;
 const RASTER_STALE_KEYS: [&[u8; 4]; 8] = [b"SoCo", b"GdFl", b"PtFl", b"SoLd", b"PlLd", b"SoLE", b"TySh", b"vscg"];
 
 const PSD_MAX_FILE_SIZE: u64 = 2 * 1024 * 1024 * 1024;
-/// Most bytes of one layer's interleaved samples the exporter gathers (the file itself is capped at [`PSD_MAX_FILE_SIZE`]).
-const MAX_LAYER_GATHER_BYTES: u64 = if cfg!(target_pointer_width = "64") { 4 << 30 } else { 512 << 20 };
+/// Most bytes of one layer's interleaved samples the exporter gathers. The interleaved bytes and
+/// the channel planes made from them (or the band parts and the joined buffer) are alive together,
+/// so the peak is about twice this; it is also what fits in a file of at most [`PSD_MAX_FILE_SIZE`].
+const MAX_LAYER_GATHER_BYTES: u64 = if cfg!(target_pointer_width = "64") { 1 << 30 } else { 256 << 20 };
 const PSD_ESTIMATE_FIXED_OVERHEAD: u64 = 1024 * 1024;
 const PSD_ESTIMATE_LAYER_OVERHEAD: u64 = 64 * 1024;
 
