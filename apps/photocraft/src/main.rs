@@ -96,9 +96,6 @@ fn custom_titlebar(prefs_file: Option<&std::path::Path>) -> bool {
     CUSTOM_TITLEBAR && !prefs.interface.system_title_bar
 }
 
-/// The size of a new window, in points.
-const DEFAULT_WINDOW_SIZE: [f32; 2] = [1440.0, 900.0];
-
 /// The main window: 1440 × 900 (shrunk to fit the monitor, and maximized on the first frame
 /// when it still doesn't fit, `work_area::fit_window`), centred on the main monitor. Without
 /// `centered`, Windows cascades each new window from the top-left corner, so it opened at a
@@ -110,7 +107,7 @@ fn native_options(custom_titlebar: bool) -> eframe::NativeOptions {
         viewport: viewport
             .with_app_id(APP_ID)
             .with_title("PhotoCraft")
-            .with_inner_size(DEFAULT_WINDOW_SIZE)
+            .with_inner_size([1440.0, 900.0])
             .with_min_inner_size([760.0, 480.0])
             .with_drag_and_drop(true)
             .with_decorations(!custom_titlebar)
@@ -132,17 +129,7 @@ fn native_options(custom_titlebar: bool) -> eframe::NativeOptions {
 /// saved full screen and maximized at once: the overlap `view_cmds::screen_mode_commands` keeps
 /// apart at run time. [OBSERVED 2026-10-12, Windows 11] Restored that way, View › Screen Mode ›
 /// Full Screen did nothing until `F` had cycled through Standard.
-///
-/// A window closed maximized is saved with the maximized size and position, so un-maximizing it
-/// later kept the screen-sized window (#8643). eframe doesn't save the normal size, so it
-/// reopens maximized with the default size (no bigger than the saved one), keeping its centre:
-/// un-maximized, it sits in the middle of the monitor it was maximized on.
-fn restored_window(mut builder: egui::ViewportBuilder) -> egui::ViewportBuilder {
-    if let (Some(true), Some(saved)) = (builder.maximized, builder.inner_size) {
-        let size = egui::Vec2::from(DEFAULT_WINDOW_SIZE).min(saved);
-        builder.position = builder.position.map(|pos| pos + (saved - size) / 2.0);
-        builder.inner_size = Some(size);
-    }
+fn restored_window(builder: egui::ViewportBuilder) -> egui::ViewportBuilder {
     at_least_min_size(builder).with_fullscreen(false)
 }
 
@@ -762,6 +749,9 @@ fn main() -> eframe::Result {
             app.min_frame_ms = uncapped.then_some(1000.0 / 240.0);
             app.integrated_titlebar = cfg!(target_os = "macos");
             app.custom_titlebar = custom_titlebar;
+            // A window closed maximized keeps its windowed size for un-maximizing (#8643).
+            let mut window_memory = ui_state::WindowMemory::default();
+            app.save_hook = Some(Box::new(move |storage: &mut dyn eframe::Storage| window_memory.correct(storage)));
             // Only the title bar's free gap drags the window, never the menus (mac_window.rs).
             #[cfg(target_os = "macos")]
             mac_window::disable_native_title_drag();
@@ -1062,25 +1052,7 @@ mod tests {
         let opened = hook(saved);
         assert_eq!(opened.fullscreen, Some(false), "Standard Screen Mode is where PhotoCraft starts");
         assert_eq!(opened.maximized, Some(true), "the rest of the saved geometry is kept");
-        assert_eq!(opened.inner_size, Some(egui::vec2(1440.0, 900.0)), "un-maximizing must not give a screen-sized window (#8643)");
-        assert_eq!(opened.position, Some(egui::pos2(560.0, 246.0)), "centred where the maximized window was");
-    }
-
-    #[test]
-    fn a_window_saved_maximized_on_a_small_monitor_is_not_bigger_than_it() {
-        let hook = super::native_options(false).window_builder.expect("a window builder hook");
-        let saved = super::native_options(false).viewport.with_inner_size([1366.0, 728.0]).with_position([1366.0, 0.0]).with_maximized(true);
-        let opened = hook(saved);
-        assert_eq!((opened.inner_size, opened.position), (Some(egui::vec2(1366.0, 728.0)), Some(egui::pos2(1366.0, 0.0))));
-        assert_eq!(opened.maximized, Some(true));
-    }
-
-    #[test]
-    fn a_normal_window_keeps_its_saved_size_and_position() {
-        let hook = super::native_options(false).window_builder.expect("a window builder hook");
-        let saved = super::native_options(false).viewport.with_inner_size([1000.0, 700.0]).with_position([30.0, 40.0]).with_maximized(false);
-        let opened = hook(saved);
-        assert_eq!((opened.inner_size, opened.position), (Some(egui::vec2(1000.0, 700.0)), Some(egui::pos2(30.0, 40.0))));
+        assert_eq!(opened.inner_size, Some(egui::vec2(2560.0, 1392.0)));
     }
 
     #[test]
